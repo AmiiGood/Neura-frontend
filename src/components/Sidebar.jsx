@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import api from "../api";
+import logo from "../assets/logo.png";
 
 function Sidebar({
   notes,
@@ -47,10 +48,7 @@ function Sidebar({
       className={`${isOpen ? "w-60" : "w-0"} bg-stone-100 flex flex-col transition-all duration-200 overflow-hidden`}
     >
       <div className="p-3 flex items-center gap-2">
-        <div className="w-5 h-5 bg-stone-800 rounded flex items-center justify-center">
-          <span className="text-white text-xs font-medium">N</span>
-        </div>
-        <span className="text-sm font-medium text-stone-700">Neura</span>
+        <img src={logo} alt="Logo" className="w-40 h-25 rounded object-contain" />
       </div>
 
       <div className="px-2 space-y-0.5">
