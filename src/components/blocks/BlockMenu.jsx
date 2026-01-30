@@ -129,9 +129,10 @@ const BLOCK_TYPES = [
   },
 ];
 
-function BlockMenu({ onSelect, onClose, filter = "" }) {
+function BlockMenu({ onSelect, onClose, filter = "", position }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const menuRef = useRef(null);
+  const [openUpward, setOpenUpward] = useState(false);
 
   const filteredTypes = BLOCK_TYPES.filter((block) => {
     if (!filter) return true;
@@ -146,6 +147,16 @@ function BlockMenu({ onSelect, onClose, filter = "" }) {
   useEffect(() => {
     setSelectedIndex(0);
   }, [filter]);
+
+  useEffect(() => {
+    if (menuRef.current) {
+      const rect = menuRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.top;
+      const menuHeight = 300; // altura aproximada fija
+
+      setOpenUpward(spaceBelow < menuHeight);
+    }
+  }, []); // Solo al montar
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -176,7 +187,9 @@ function BlockMenu({ onSelect, onClose, filter = "" }) {
     return (
       <>
         <div className="fixed inset-0 z-10" onClick={onClose} />
-        <div className="relative z-20 bg-white border border-stone-200 rounded-lg shadow-lg py-3 px-4 w-56">
+        <div
+          className={`relative z-20 bg-white border border-stone-200 rounded-lg shadow-lg py-3 px-4 w-56 ${openUpward ? "bottom-full mb-2" : ""}`}
+        >
           <p className="text-sm text-stone-400">Sin resultados</p>
         </div>
       </>
@@ -188,7 +201,7 @@ function BlockMenu({ onSelect, onClose, filter = "" }) {
       <div className="fixed inset-0 z-10" onClick={onClose} />
       <div
         ref={menuRef}
-        className="relative z-20 bg-white border border-stone-200 rounded-lg shadow-lg py-1 w-56"
+        className={`absolute z-20 bg-white border border-stone-200 rounded-lg shadow-lg py-1 w-56 ${openUpward ? "bottom-full mb-2" : "top-full mt-1"}`}
       >
         <p className="px-3 py-1.5 text-xs text-stone-400 uppercase tracking-wide">
           Bloques
