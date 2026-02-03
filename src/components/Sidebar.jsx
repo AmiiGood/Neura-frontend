@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import api from "../api";
 import logo from "../assets/logo.png";
+import KeyboardHints from "./KeyboardHints";
 
 function Sidebar({
   notes,
@@ -165,6 +166,9 @@ function Sidebar({
           </div>
         ))}
       </div>
+
+      {/* Atajos al final del sidebar */}
+      <KeyboardHints />
     </aside>
   );
 }

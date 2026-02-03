@@ -51,6 +51,7 @@ function BlockEditor({
   setNotes,
   sidebarOpen,
   setSidebarOpen,
+  saveRequested,
 }) {
   const [title, setTitle] = useState("");
   const [blocks, setBlocks] = useState([]);
@@ -269,6 +270,12 @@ function BlockEditor({
       deleteBlock(index);
     }
   };
+
+  useEffect(() => {
+    if (saveRequested > 0) {
+      saveNote();
+    }
+  }, [saveRequested]);
 
   if (!note) {
     return (
