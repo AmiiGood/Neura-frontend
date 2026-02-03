@@ -18,7 +18,7 @@ function TextBlock({ block, onChange, onKeyDown }) {
       onChange={(e) => onChange({ content: e.target.value })}
       onKeyDown={onKeyDown}
       placeholder="Escribe algo, o presiona '/' para comandos..."
-      className="w-full bg-transparent border-none outline-none resize-none text-stone-600 leading-relaxed"
+      className="block-input w-full bg-transparent border-none outline-none resize-none text-stone-600 leading-relaxed"
       style={{
         fontFamily: "Georgia, serif",
         fontSize: "1.1rem",

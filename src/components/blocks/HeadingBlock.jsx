@@ -28,7 +28,7 @@ function HeadingBlock({ block, onChange, onKeyDown }) {
         onChange={(e) => onChange({ content: e.target.value })}
         onKeyDown={onKeyDown}
         placeholder="Título"
-        className={`flex-1 bg-transparent border-none outline-none font-bold text-stone-800 placeholder-stone-300 ${sizes[level]}`}
+        className={`block-input flex-1 bg-transparent border-none outline-none font-bold text-stone-800 placeholder-stone-300 ${sizes[level]}`}
         style={{ fontFamily: "Georgia, serif" }}
       />
     </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import api from "../api";
 import TextBlock from "./blocks/TextBlock";
 import HeadingBlock from "./blocks/HeadingBlock";
@@ -17,6 +17,33 @@ const BLOCK_COMPONENTS = {
   quote: QuoteBlock,
 };
 
+// Hook para debounce
+function useDebounce(callback, delay) {
+  const timeoutRef = useRef(null);
+
+  const debouncedCallback = useCallback(
+    (...args) => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = setTimeout(() => {
+        callback(...args);
+      }, delay);
+    },
+    [callback, delay],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  return debouncedCallback;
+}
+
 function BlockEditor({
   note,
   setNote,
@@ -31,10 +58,29 @@ function BlockEditor({
   const [menuOpen, setMenuOpen] = useState(null);
   const [menuFilter, setMenuFilter] = useState("");
   const [lastSaved, setLastSaved] = useState(null);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  // Refs para acceder a valores actuales en el callback
+  const titleRef = useRef(title);
+  const blocksRef = useRef(blocks);
+  const noteRef = useRef(note);
+
+  useEffect(() => {
+    titleRef.current = title;
+  }, [title]);
+
+  useEffect(() => {
+    blocksRef.current = blocks;
+  }, [blocks]);
+
+  useEffect(() => {
+    noteRef.current = note;
+  }, [note]);
 
   useEffect(() => {
     if (note) {
       setTitle(note.title || "");
+      setHasChanges(false);
       if (note.id) {
         loadBlocks();
       } else {
@@ -56,38 +102,49 @@ function BlockEditor({
     }
   };
 
-  const saveNote = async () => {
-    if (!title.trim()) return;
+  // Función de guardado
+  const saveNote = useCallback(async () => {
+    const currentTitle = titleRef.current;
+    const currentBlocks = blocksRef.current;
+    const currentNote = noteRef.current;
+
+    if (!currentTitle.trim()) return;
 
     setSaving(true);
     try {
-      let currentNote = note;
+      let savedNote = currentNote;
 
       // Crear o actualizar nota
-      if (note?.id) {
-        const content = blocks.map((b) => b.content).join("\n");
-        const res = await api.put(`/notes/${note.id}`, { title, content });
-        setNotes(notes.map((n) => (n.id === note.id ? res.data : n)));
-        currentNote = res.data;
+      if (currentNote?.id) {
+        const content = currentBlocks.map((b) => b.content).join("\n");
+        const res = await api.put(`/notes/${currentNote.id}`, {
+          title: currentTitle,
+          content,
+        });
+        setNotes((prev) =>
+          prev.map((n) => (n.id === currentNote.id ? res.data : n)),
+        );
+        savedNote = res.data;
       } else {
-        const content = blocks.map((b) => b.content).join("\n");
-        const res = await api.post("/notes", { title, content });
-        setNotes([res.data, ...notes]);
+        const content = currentBlocks.map((b) => b.content).join("\n");
+        const res = await api.post("/notes", { title: currentTitle, content });
+        setNotes((prev) => [res.data, ...prev]);
         setNote(res.data);
-        currentNote = res.data;
+        savedNote = res.data;
       }
 
       // Guardar bloques
-      for (let i = 0; i < blocks.length; i++) {
-        const block = blocks[i];
+      const updatedBlocks = [...currentBlocks];
+      for (let i = 0; i < updatedBlocks.length; i++) {
+        const block = updatedBlocks[i];
         if (String(block.id).startsWith("temp-")) {
-          const res = await api.post(`/blocks/note/${currentNote.id}`, {
+          const res = await api.post(`/blocks/note/${savedNote.id}`, {
             type: block.type,
             content: block.content,
             metadata: block.metadata || {},
             position: i,
           });
-          blocks[i] = res.data;
+          updatedBlocks[i] = res.data;
         } else {
           await api.put(`/blocks/${block.id}`, {
             type: block.type,
@@ -98,18 +155,32 @@ function BlockEditor({
         }
       }
 
-      setBlocks([...blocks]);
+      setBlocks(updatedBlocks);
       setLastSaved(new Date());
+      setHasChanges(false);
     } catch (err) {
       console.error("Error guardando:", err);
     }
     setSaving(false);
+  }, [setNotes, setNote]);
+
+  // Autoguardado con debounce de 2 segundos
+  const debouncedSave = useDebounce(saveNote, 2000);
+
+  // Detectar cambios y disparar autoguardado
+  const handleTitleChange = (newTitle) => {
+    setTitle(newTitle);
+    setHasChanges(true);
+    if (newTitle.trim()) {
+      debouncedSave();
+    }
   };
 
   const updateBlock = (index, updates) => {
     const newBlocks = [...blocks];
     newBlocks[index] = { ...newBlocks[index], ...updates };
     setBlocks(newBlocks);
+    setHasChanges(true);
 
     // Detectar slash command
     const content = updates.content || "";
@@ -120,10 +191,14 @@ function BlockEditor({
       setMenuOpen(null);
       setMenuFilter("");
     }
+
+    // Disparar autoguardado si hay título
+    if (titleRef.current.trim()) {
+      debouncedSave();
+    }
   };
 
   const addBlock = (type, afterIndex) => {
-    // Limpiar el contenido del bloque actual si tenía slash command
     if (blocks[afterIndex]?.content?.startsWith("/")) {
       const newBlocks = [...blocks];
       newBlocks[afterIndex] = { ...newBlocks[afterIndex], content: "" };
@@ -142,6 +217,7 @@ function BlockEditor({
     setBlocks(newBlocks);
     setMenuOpen(null);
     setMenuFilter("");
+    setHasChanges(true);
   };
 
   const replaceBlock = (index, type) => {
@@ -155,6 +231,7 @@ function BlockEditor({
     setBlocks(newBlocks);
     setMenuOpen(null);
     setMenuFilter("");
+    setHasChanges(true);
   };
 
   const deleteBlock = async (index) => {
@@ -171,11 +248,11 @@ function BlockEditor({
 
     const newBlocks = blocks.filter((_, i) => i !== index);
     setBlocks(newBlocks);
+    setHasChanges(true);
   };
 
   const handleKeyDown = (e, index) => {
     if (menuOpen === index) {
-      // Dejar que BlockMenu maneje las teclas
       return;
     }
 
@@ -259,22 +336,29 @@ function BlockEditor({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {lastSaved && (
-            <span className="text-xs text-stone-400">
-              Guardado{" "}
-              {lastSaved.toLocaleTimeString("es", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </span>
-          )}
-          <button
-            onClick={saveNote}
-            disabled={saving || !title.trim()}
-            className="px-3 py-1 text-sm bg-stone-800 text-white rounded hover:bg-stone-700 disabled:bg-stone-300 disabled:text-stone-500 transition"
-          >
-            {saving ? "Guardando..." : "Guardar"}
-          </button>
+          {/* Indicador de estado */}
+          <span className="text-xs text-stone-400 flex items-center gap-1">
+            {saving ? (
+              <>
+                <span className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
+                Guardando...
+              </>
+            ) : hasChanges ? (
+              <>
+                <span className="w-2 h-2 bg-orange-400 rounded-full" />
+                Sin guardar
+              </>
+            ) : lastSaved ? (
+              <>
+                <span className="w-2 h-2 bg-green-400 rounded-full" />
+                Guardado{" "}
+                {lastSaved.toLocaleTimeString("es", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </>
+            ) : null}
+          </span>
         </div>
       </div>
 
@@ -283,7 +367,7 @@ function BlockEditor({
           <input
             type="text"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => handleTitleChange(e.target.value)}
             placeholder="Sin título"
             className="w-full text-4xl font-bold bg-transparent border-none outline-none placeholder-stone-300 text-stone-800 mb-8"
             style={{ fontFamily: "Georgia, serif" }}

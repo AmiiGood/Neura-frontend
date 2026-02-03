@@ -3,6 +3,7 @@ import Sidebar from "./components/Sidebar";
 import BlockEditor from "./components/BlockEditor";
 import Chat from "./components/Chat";
 import RelatedNotes from "./components/RelatedNotes";
+import { useTour } from "./hooks/useTour";
 
 function App() {
   const [notes, setNotes] = useState([]);
@@ -10,6 +11,9 @@ function App() {
   const [view, setView] = useState("notes");
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
+  // Activar el tour
+  useTour();
+  
   return (
     <div className="h-screen flex bg-white text-stone-800">
       <Sidebar

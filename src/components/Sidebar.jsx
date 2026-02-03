@@ -48,7 +48,11 @@ function Sidebar({
       className={`${isOpen ? "w-60" : "w-0"} bg-stone-100 flex flex-col transition-all duration-200 overflow-hidden`}
     >
       <div className="p-3 flex items-center gap-2">
-        <img src={logo} alt="Logo" className="w-40 h-25 rounded object-contain" />
+        <img
+          src={logo}
+          alt="Logo"
+          className="w-40 h-25 rounded object-contain"
+        />
       </div>
 
       <div className="px-2 space-y-0.5">
@@ -98,6 +102,7 @@ function Sidebar({
 
       <div className="mt-4 px-2">
         <button
+          id="new-page-btn"
           onClick={createNote}
           className="w-full py-1.5 text-sm text-stone-500 hover:bg-stone-200/50 rounded flex items-center gap-2 px-2 transition"
         >

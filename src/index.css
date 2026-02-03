@@ -1,1 +1,28 @@
 @import "tailwindcss";
+
+.shepherd-element {
+  z-index: 9999;
+}
+
+.shepherd-modal-overlay-container {
+  z-index: 9998;
+}
+
+.shepherd-content {
+  border-radius: 12px;
+  font-family: Georgia, serif;
+}
+
+.shepherd-text {
+  color: #44403c;
+  padding: 1rem;
+}
+
+.shepherd-button {
+  background: #292524 !important;
+  border-radius: 6px !important;
+}
+
+.shepherd-button:hover {
+  background: #44403c !important;
+}

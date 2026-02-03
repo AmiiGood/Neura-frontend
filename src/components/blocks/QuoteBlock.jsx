@@ -33,7 +33,7 @@ function QuoteBlock({ block, onChange, onKeyDown }) {
           onChange({ metadata: { ...block.metadata, author: e.target.value } })
         }
         placeholder="— Autor"
-        className="w-full mt-1 text-sm text-stone-400 bg-transparent border-none outline-none"
+        className="block-input w-full mt-1 text-sm text-stone-400 bg-transparent border-none outline-none"
       />
     </div>
   );
