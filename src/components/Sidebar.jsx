@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import api from "../api";
 import logo from "../assets/logo.png";
 import KeyboardHints from "./KeyboardHints";
+import ConfirmModal from "./ConfirmModal";
 
 function Sidebar({
   notes,
@@ -13,6 +14,8 @@ function Sidebar({
   isOpen,
   setIsOpen,
 }) {
+  const [deleteModal, setDeleteModal] = useState({ isOpen: false, note: null });
+
   useEffect(() => {
     loadNotes();
   }, []);
@@ -31,17 +34,30 @@ function Sidebar({
     setView("notes");
   };
 
-  const deleteNote = async (id, e) => {
+  const handleDeleteClick = (note, e) => {
     e.stopPropagation();
+    setDeleteModal({ isOpen: true, note });
+  };
+
+  const confirmDelete = async () => {
+    const note = deleteModal.note;
+    if (!note) return;
+
     try {
-      await api.delete(`/notes/${id}`);
-      setNotes(notes.filter((n) => n.id !== id));
-      if (selectedNote?.id === id) {
+      await api.delete(`/notes/${note.id}`);
+      setNotes(notes.filter((n) => n.id !== note.id));
+      if (selectedNote?.id === note.id) {
         setSelectedNote(null);
       }
     } catch (err) {
       console.error("Error eliminando nota:", err);
     }
+
+    setDeleteModal({ isOpen: false, note: null });
+  };
+
+  const cancelDelete = () => {
+    setDeleteModal({ isOpen: false, note: null });
   };
 
   return (
@@ -146,8 +162,8 @@ function Sidebar({
               </span>
             </div>
             <button
-              onClick={(e) => deleteNote(note.id, e)}
-              className="opacity-0 group-hover:opacity-100 text-stone-400 hover:text-stone-600 transition p-0.5"
+              onClick={(e) => handleDeleteClick(note, e)}
+              className="opacity-0 group-hover:opacity-100 text-stone-400 hover:text-red-500 transition p-0.5"
             >
               <svg
                 className="w-3.5 h-3.5"
@@ -167,8 +183,19 @@ function Sidebar({
         ))}
       </div>
 
-      {/* Atajos al final del sidebar */}
       <KeyboardHints />
+
+      {/* Modal de confirmación */}
+      <ConfirmModal
+        isOpen={deleteModal.isOpen}
+        title="Eliminar nota"
+        message={`¿Estás seguro de que quieres eliminar "${deleteModal.note?.title || "Sin título"}"? Esta acción no se puede deshacer.`}
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+        danger
+      />
     </aside>
   );
 }

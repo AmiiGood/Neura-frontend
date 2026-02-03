@@ -1,24 +1,28 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import api from "../api";
-import TextBlock from "./blocks/TextBlock";
-import HeadingBlock from "./blocks/HeadingBlock";
-import CodeBlock from "./blocks/CodeBlock";
-import ImageBlock from "./blocks/ImageBlock";
-import LinkBlock from "./blocks/LinkBlock";
-import QuoteBlock from "./blocks/QuoteBlock";
+import SortableBlock from "./blocks/SortableBlock";
+import BlockPreview from "./blocks/BlockPreview";
 import BlockMenu from "./blocks/BlockMenu";
-
-const BLOCK_COMPONENTS = {
-  text: TextBlock,
-  heading: HeadingBlock,
-  code: CodeBlock,
-  image: ImageBlock,
-  link: LinkBlock,
-  quote: QuoteBlock,
-};
+import Breadcrumbs from "./Breadcrumbs";
+import SyncIndicator from "./SyncIndicator";
 
 // Hook para debounce
-function useDebounce(callback, delay) {
+function useDebounce(callback, delay, onStart) {
   const timeoutRef = useRef(null);
 
   const debouncedCallback = useCallback(
@@ -27,10 +31,11 @@ function useDebounce(callback, delay) {
         clearTimeout(timeoutRef.current);
       }
       timeoutRef.current = setTimeout(() => {
+        onStart?.(); // Notificar que va a empezar
         callback(...args);
       }, delay);
     },
-    [callback, delay],
+    [callback, delay, onStart],
   );
 
   useEffect(() => {
@@ -60,11 +65,27 @@ function BlockEditor({
   const [menuFilter, setMenuFilter] = useState("");
   const [lastSaved, setLastSaved] = useState(null);
   const [hasChanges, setHasChanges] = useState(false);
+  const [activeBlock, setActiveBlock] = useState(null);
+  const [focusIndex, setFocusIndex] = useState(null);
+  const [focusTarget, setFocusTarget] = useState(null);
+  const [syncStatus, setSyncStatus] = useState(null);
 
   // Refs para acceder a valores actuales en el callback
   const titleRef = useRef(title);
   const blocksRef = useRef(blocks);
   const noteRef = useRef(note);
+
+  // Sensores para drag & drop
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Necesita mover 8px antes de activar el drag
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
   useEffect(() => {
     titleRef.current = title;
@@ -90,6 +111,12 @@ function BlockEditor({
     }
   }, [note?.id]);
 
+  useEffect(() => {
+    if (saveRequested > 0) {
+      saveNote();
+    }
+  }, [saveRequested]);
+
   const loadBlocks = async () => {
     try {
       const res = await api.get(`/blocks/note/${note.id}`);
@@ -103,7 +130,6 @@ function BlockEditor({
     }
   };
 
-  // Función de guardado
   const saveNote = useCallback(async () => {
     const currentTitle = titleRef.current;
     const currentBlocks = blocksRef.current;
@@ -111,11 +137,10 @@ function BlockEditor({
 
     if (!currentTitle.trim()) return;
 
-    setSaving(true);
+    // Ya no seteamos "saving" aquí, lo hace el debounce
     try {
       let savedNote = currentNote;
 
-      // Crear o actualizar nota
       if (currentNote?.id) {
         const content = currentBlocks.map((b) => b.content).join("\n");
         const res = await api.put(`/notes/${currentNote.id}`, {
@@ -134,7 +159,6 @@ function BlockEditor({
         savedNote = res.data;
       }
 
-      // Guardar bloques
       const updatedBlocks = [...currentBlocks];
       for (let i = 0; i < updatedBlocks.length; i++) {
         const block = updatedBlocks[i];
@@ -159,19 +183,27 @@ function BlockEditor({
       setBlocks(updatedBlocks);
       setLastSaved(new Date());
       setHasChanges(false);
+      setSyncStatus("saved");
     } catch (err) {
       console.error("Error guardando:", err);
+      setSyncStatus("error");
+
+      setTimeout(() => {
+        setSyncStatus("unsaved");
+      }, 3000);
     }
-    setSaving(false);
   }, [setNotes, setNote]);
 
-  // Autoguardado con debounce de 2 segundos
-  const debouncedSave = useDebounce(saveNote, 2000);
+  const debouncedSave = useDebounce(saveNote, 2000, () =>
+    setSyncStatus("saving"),
+  );
 
-  // Detectar cambios y disparar autoguardado
   const handleTitleChange = (newTitle) => {
     setTitle(newTitle);
     setHasChanges(true);
+    if (syncStatus !== "saving") {
+      setSyncStatus("unsaved");
+    }
     if (newTitle.trim()) {
       debouncedSave();
     }
@@ -182,8 +214,10 @@ function BlockEditor({
     newBlocks[index] = { ...newBlocks[index], ...updates };
     setBlocks(newBlocks);
     setHasChanges(true);
+    if (syncStatus !== "saving") {
+      setSyncStatus("unsaved");
+    }
 
-    // Detectar slash command
     const content = updates.content || "";
     if (content.startsWith("/")) {
       setMenuOpen(index);
@@ -193,7 +227,6 @@ function BlockEditor({
       setMenuFilter("");
     }
 
-    // Disparar autoguardado si hay título
     if (titleRef.current.trim()) {
       debouncedSave();
     }
@@ -219,6 +252,7 @@ function BlockEditor({
     setMenuOpen(null);
     setMenuFilter("");
     setHasChanges(true);
+    setFocusTarget({ index: afterIndex + 1, timestamp: Date.now() });
   };
 
   const replaceBlock = (index, type) => {
@@ -233,6 +267,7 @@ function BlockEditor({
     setMenuOpen(null);
     setMenuFilter("");
     setHasChanges(true);
+    setFocusTarget({ index, timestamp: Date.now() });
   };
 
   const deleteBlock = async (index) => {
@@ -248,8 +283,15 @@ function BlockEditor({
     }
 
     const newBlocks = blocks.filter((_, i) => i !== index);
+    const newFocusIndex = Math.max(0, index - 1);
+
     setBlocks(newBlocks);
     setHasChanges(true);
+
+    // Usar setTimeout para que el estado de blocks se actualice primero
+    setTimeout(() => {
+      setFocusTarget({ index: newFocusIndex, timestamp: Date.now() });
+    }, 10);
   };
 
   const handleKeyDown = (e, index) => {
@@ -271,36 +313,63 @@ function BlockEditor({
     }
   };
 
-  useEffect(() => {
-    if (saveRequested > 0) {
-      saveNote();
+  // Handler para drag & drop
+  const handleDragStart = (event) => {
+    const { active } = event;
+    const block = blocks.find((b) => b.id === active.id);
+    setActiveBlock(block);
+  };
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    setActiveBlock(null);
+
+    if (active.id !== over?.id) {
+      setBlocks((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+
+        const newItems = arrayMove(items, oldIndex, newIndex);
+        setHasChanges(true);
+
+        if (titleRef.current.trim()) {
+          debouncedSave();
+        }
+
+        return newItems;
+      });
     }
-  }, [saveRequested]);
+  };
 
   if (!note) {
     return (
       <div className="flex-1 flex flex-col">
-        <div className="h-11 border-b border-stone-200 flex items-center px-3">
-          {!sidebarOpen && (
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="p-1 hover:bg-stone-100 rounded transition mr-2"
-            >
-              <svg
-                className="w-5 h-5 text-stone-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+        <div className="h-11 border-b border-stone-200 flex items-center justify-between px-3">
+          <div className="flex items-center gap-2">
+            {!sidebarOpen && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="p-1 hover:bg-stone-100 rounded transition"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M4 6h16M4 12h16M4 18h16"
-                />
-              </svg>
-            </button>
-          )}
+                <svg
+                  className="w-5 h-5 text-stone-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
+                </svg>
+              </button>
+            )}
+            <Breadcrumbs note={{ title }} />
+          </div>
+
+          <SyncIndicator status={syncStatus} lastSaved={lastSaved} />
         </div>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
@@ -343,7 +412,6 @@ function BlockEditor({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {/* Indicador de estado */}
           <span className="text-xs text-stone-400 flex items-center gap-1">
             {saving ? (
               <>
@@ -380,82 +448,42 @@ function BlockEditor({
             style={{ fontFamily: "Georgia, serif" }}
           />
 
-          <div className="space-y-2">
-            {blocks.map((block, index) => {
-              const BlockComponent = BLOCK_COMPONENTS[block.type];
-              return (
-                <div key={block.id} className="group relative">
-                  <div className="absolute -left-17 top-0 opacity-0 group-hover:opacity-100 transition flex items-center gap-0.5 h-7">
-                    <button
-                      onClick={() => {
-                        if (menuOpen === index) {
-                          setMenuOpen(null);
-                          setMenuFilter("");
-                        } else {
-                          setMenuOpen(index);
-                          setMenuFilter("");
-                        }
-                      }}
-                      className="p-1.5 hover:bg-stone-100 rounded text-stone-400 hover:text-stone-600"
-                      title="Añadir bloque"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 4v16m8-8H4"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => deleteBlock(index)}
-                      className="p-1.5 hover:bg-stone-100 rounded text-stone-400 hover:text-red-500"
-                      title="Eliminar bloque"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-
-                  {menuOpen === index && (
-                    <div className="absolute left-0 top-7 z-20">
-                      <BlockMenu
-                        filter={menuFilter}
-                        onSelect={(type) => replaceBlock(index, type)}
-                        onClose={() => {
-                          setMenuOpen(null);
-                          setMenuFilter("");
-                        }}
-                      />
-                    </div>
-                  )}
-
-                  <BlockComponent
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={blocks.map((b) => b.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-2">
+                {blocks.map((block, index) => (
+                  <SortableBlock
+                    key={block.id}
                     block={block}
-                    onChange={(updates) => updateBlock(index, updates)}
-                    onKeyDown={(e) => handleKeyDown(e, index)}
+                    index={index}
+                    isFirst={index === 0}
+                    focusTarget={focusTarget}
+                    onFocused={() => setFocusTarget(null)}
+                    menuOpen={menuOpen}
+                    menuFilter={menuFilter}
+                    setMenuOpen={setMenuOpen}
+                    setMenuFilter={setMenuFilter}
+                    updateBlock={updateBlock}
+                    deleteBlock={deleteBlock}
+                    replaceBlock={replaceBlock}
+                    handleKeyDown={handleKeyDown}
                   />
-                </div>
-              );
-            })}
-          </div>
+                ))}
+              </div>
+            </SortableContext>
+
+            <DragOverlay>
+              {activeBlock ? <BlockPreview block={activeBlock} /> : null}
+            </DragOverlay>
+          </DndContext>
 
           <button
             onClick={() => addBlock("text", blocks.length - 1)}

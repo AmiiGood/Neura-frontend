@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import api from "../api";
+import Breadcrumbs from "./Breadcrumbs";
 
 function Chat({ sidebarOpen, setSidebarOpen }) {
   const [messages, setMessages] = useState([]);
@@ -46,7 +47,7 @@ function Chat({ sidebarOpen, setSidebarOpen }) {
 
   return (
     <div className="flex-1 flex flex-col">
-      {/* Top bar */}
+      {/* Top bar con Breadcrumbs */}
       <div className="h-11 border-b border-stone-200 flex items-center px-3">
         {!sidebarOpen && (
           <button
@@ -68,10 +69,14 @@ function Chat({ sidebarOpen, setSidebarOpen }) {
             </svg>
           </button>
         )}
-        <span className="text-sm text-stone-500">Chat con Neura</span>
+        <div className="flex items-center gap-1.5 text-sm">
+          <span className="text-stone-400">💬</span>
+          <span className="text-stone-400">/</span>
+          <span className="text-stone-600">Chat con Neura</span>
+        </div>
       </div>
 
-      {/* Messages */}
+      {/* Messages - resto igual */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
           {messages.length === 0 && (
